@@ -293,23 +293,23 @@ class BaseManager(Node):
         self.declare_parameter('color_topics', [])
         self.declare_parameter('depth_topics', [])
         self.declare_parameter('color_topics_csv',
-                               '/camera_01/color/image_raw,/camera_03/color/image_raw,/camera_04/color/image_raw')
+                               '/camera_01/color/image_raw,/camera_02/color/image_raw,/camera_03/color/image_raw,/camera_04/color/image_raw,')
         self.declare_parameter('depth_topics_csv',
                                '/camera_01/depth/image_raw,/camera_03/depth/image_raw,/camera_04/depth/image_raw')
 
         # joint/tactile：多路 + 兼容单路
         self.declare_parameter('joint_state_topics', [])
-        self.declare_parameter('joint_state_topics_csv', '')
+        self.declare_parameter('joint_state_topics_csv', '/joint_states_right')
         self.declare_parameter('tactile_topics', [])
         self.declare_parameter('tactile_topics_csv', '')
-        self.declare_parameter('joint_state_topic', '/robot/joint_states')  # legacy
-        self.declare_parameter('tactile_topic', '/tactile_data')  # legacy
+        self.declare_parameter('joint_state_topic', '')  # legacy
+        self.declare_parameter('tactile_topic', '')  # legacy
 
         # 频率与容差（ms）
-        self.declare_parameter('rate_hz', 30.0)
-        self.declare_parameter('image_tolerance_ms', 15.0)
-        self.declare_parameter('joint_tolerance_ms', 15.0)
-        self.declare_parameter('tactile_tolerance_ms', 60.0)
+        self.declare_parameter('rate_hz', 60.0)
+        self.declare_parameter('image_tolerance_ms', 22.0)
+        self.declare_parameter('joint_tolerance_ms', 10.0)
+        self.declare_parameter('tactile_tolerance_ms', 50.0)
 
         # 窗口与目录
         self.declare_parameter('queue_seconds', 2.0)
@@ -328,8 +328,8 @@ class BaseManager(Node):
 
         # 力矩低通滤波配置（默认 7 维）
         self.declare_parameter('effort_filter_enable', True)    # 是否启用力矩滤波
-        self.declare_parameter('effort_filter_fs', 0.0)         # <=0 时使用 rate_hz
-        self.declare_parameter('effort_filter_tau_sec', 0.05)   # 一阶低通时间常数
+        self.declare_parameter('effort_filter_fs', 50.0)         # <=0 时使用 rate_hz
+        self.declare_parameter('effort_filter_tau_sec', 0.10)   # 一阶低通时间常数
         self.declare_parameter('effort_filter_num_channels', 7) # 默认 7 维力矩
 
         # 偏置（ms）
