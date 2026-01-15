@@ -137,8 +137,8 @@ class MultiStreamAligner:
             self._warn("enqueue failed stream[%d]: %s", i, e)
 
     def _drain_one(self, i: int):
-        qi = self.ingest[i];
-        ti = self.times[i];
+        qi = self.ingest[i]
+        ti = self.times[i]
         mi = self.msgs[i]
         last = ti[-1] if ti else -1
         drained = appended = drop_ooo = 0
@@ -149,9 +149,9 @@ class MultiStreamAligner:
             except Empty:
                 break
             if t_ns >= last:
-                ti.append(t_ns);
-                mi.append(msg);
-                last = t_ns;
+                ti.append(t_ns)
+                mi.append(msg)
+                last = t_ns
                 appended += 1
             else:
                 drop_ooo += 1
@@ -164,7 +164,7 @@ class MultiStreamAligner:
             drop_k, n = 0, len(ti)
             while drop_k < n and ti[drop_k] < cutoff: drop_k += 1
             if drop_k > 0:
-                del ti[:drop_k];
+                del ti[:drop_k]
                 del mi[:drop_k]
                 self.cursor[i] -= drop_k
                 if self.cursor[i] < -1: self.cursor[i] = -1
