@@ -12,6 +12,7 @@ from .ros2_qos import reliable_qos
 
 from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float32MultiArray
+from common.msg import OculusInitJointState
 
 # ====================== 一阶低通滤波 ======================
 
@@ -546,7 +547,13 @@ class BaseManager(Node):
         cg_joint = ReentrantCallbackGroup()
         cg_tact = ReentrantCallbackGroup()
         for k, topic in enumerate(self.joint_topics):
-            self.create_subscription(JointState, topic, self._mk_joint_cb(k), reliable_qos, callback_group=cg_joint)
+            if "double_arm" in topic:
+                self.create_subscription(
+                    OculusInitJointState, topic, self._mk_oculus_init_joint_cb(k), reliable_qos,
+                    callback_group=cg_joint
+                )
+            else:
+                self.create_subscription(JointState, topic, self._mk_joint_cb(k), reliable_qos, callback_group=cg_joint)
         for k, topic in enumerate(self.tactile_topics):
             self.create_subscription(Float32MultiArray, topic, self._mk_tactile_cb(k), reliable_qos,
                                      callback_group=cg_tact)
@@ -618,6 +625,13 @@ class BaseManager(Node):
                 self._warn("effort filter in joint_cb error: %s", e)
 
             # 无论是否启用滤波，消息都照常送给对齐器
+            self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
+
+        return _cb
+
+    def _mk_oculus_init_joint_cb(self, k: int):
+        def _cb(msg: OculusInitJointState):
+            t_ns = self._ns_from_header_or_clock(msg.header)
             self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
 
         return _cb
