@@ -313,7 +313,7 @@ class BaseManager(Node):
 
         # 窗口与目录
         self.declare_parameter('queue_seconds', 2.0)
-        self.declare_parameter('save_dir', os.path.expanduser('/home/test/jemotor/log/'))
+        self.declare_parameter('save_dir', os.path.expanduser('~/jemotor/log/'))
         self.declare_parameter('session_name', '')
         self.declare_parameter('save_depth', True)
         self.declare_parameter('overwrite', False)
