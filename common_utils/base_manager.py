@@ -519,13 +519,22 @@ class BaseManager(Node):
         non_consuming = list(self._idx_tact)  # tactile 非消耗
         optional_indices = list(self._idx_tact)  # tactile 可选
 
+        ref_indices = list(camera_refs)
+        if not ref_indices:
+            if self._idx_joint:
+                ref_indices = list(self._idx_joint)
+            elif self._idx_tact:
+                ref_indices = list(self._idx_tact)
+            else:
+                ref_indices = list(range(num_streams))
+
         self.aligner = MultiStreamAligner(
             num_streams=num_streams,
             tolerances_ns=tolerances_ns,
             offsets_ns=offsets_ns,
             max_window_ns=max_window_ns,
             logger=self.get_logger(),
-            ref_indices=camera_refs,
+            ref_indices=ref_indices,
             non_consuming_indices=non_consuming,
             optional_indices=optional_indices,
         )
