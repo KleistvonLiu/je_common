@@ -644,7 +644,33 @@ class BaseManager(Node):
             self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
 
         return _cb
-    
+
+    # def _mk_oculus_init_joint_cb(self, k: int):
+    #     last_log_t = time.perf_counter()
+    #     last_count = 0
+    #     count = 0
+    #     topic = self.joint_topics[k] if 0 <= k < len(self.joint_topics) else f"joint[{k}]"
+
+    #     def _cb(msg: OculusInitJointState):
+    #         nonlocal last_log_t, last_count, count
+    #         count += 1
+    #         if self.do_calculate_hz:
+    #             now = time.perf_counter()
+    #             log_period_s = max(0.2, float(self.stats_log_period_s))
+    #             if now - last_log_t >= log_period_s:
+    #                 dt = now - last_log_t
+    #                 delta = count - last_count
+    #                 hz = (delta / dt) if dt > 0 else 0.0
+    #                 self.get_logger().info(
+    #                     f"[oculus_init_joint_cb] idx={k} topic={topic} rate={hz:.2f}Hz"
+    #                 )
+    #                 last_log_t = now
+    #                 last_count = count
+    #         t_ns = self._ns_from_header_or_clock(msg.header)
+    #         self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
+
+    #     return _cb
+
     def _mk_tactile_cb(self, k: int):
         def _cb(msg: Float32MultiArray):
             t_ns = self.get_clock().now().nanoseconds
