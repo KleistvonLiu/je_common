@@ -1,13 +1,13 @@
 {
   "left": {
-    "gripper": 2033.0,
-    "joint1": 959.0,
-    "joint2": -1063.0,
-    "joint3": -14.0,
-    "joint4": 43.0,
-    "joint5": 3024.0,
-    "joint6": 3053.0,
-    "joint7": 11.0
+    "gripper": 2005.0,
+    "joint1": 964.0,
+    "joint2": 1058.0,
+    "joint3": 4084.0,
+    "joint4": 1994.0,
+    "joint5": 3020.0,
+    "joint6": 2968.0,
+    "joint7": 4013.0
   },
   "right": {}
 }
