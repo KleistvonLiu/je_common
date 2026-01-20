@@ -8,7 +8,7 @@ from queue import SimpleQueue, Empty
 
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
-from .ros2_qos import reliable_qos
+from .ros2_qos import reliable_qos, sensor_qos
 
 from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float32MultiArray
@@ -116,6 +116,7 @@ class MultiStreamAligner:
                         pass
 
     def _maybe_log_summary(self):
+        return
         t = time.monotonic()
         need = (self.stats["step_attempt"] % self.log_every == 0) or ((t - self._last_log_t) >= self.log_period_s)
         if not need: return
@@ -300,7 +301,7 @@ class BaseManager(Node):
 
         # joint/tactile：多路 + 兼容单路
         self.declare_parameter('joint_state_topics', [])
-        self.declare_parameter('joint_state_topics_csv', '/joint_states_right')
+        self.declare_parameter('joint_state_topics_csv', '/joint_states_double_arm')
         self.declare_parameter('tactile_topics', [])
         self.declare_parameter('tactile_topics_csv', '')
         self.declare_parameter('joint_state_topic', '')  # legacy
@@ -601,42 +602,42 @@ class BaseManager(Node):
 
     #     return _cb
 
-    def _mk_joint_cb(self, k: int):
-        def _cb(msg: JointState):
-            # 统一算出时间戳（ns）
-            t_ns = self._ns_from_header_or_clock(msg.header)
+    # def _mk_joint_cb(self, k: int):
+    #     def _cb(msg: JointState):
+    #         # 统一算出时间戳（ns）
+    #         t_ns = self._ns_from_header_or_clock(msg.header)
 
-            # ===== 力矩低通滤波（高频） =====
-            try:
-                if self.effort_filter_enable and getattr(msg, "effort", None) is not None:
-                    # 原始力矩列表（拷一份，避免原地改的时候丢失原始）
-                    raw_efforts = [float(x) for x in msg.effort]
-                    n_raw = len(raw_efforts)
+    #         # ===== 力矩低通滤波（高频） =====
+    #         try:
+    #             if self.effort_filter_enable and getattr(msg, "effort", None) is not None:
+    #                 # 原始力矩列表（拷一份，避免原地改的时候丢失原始）
+    #                 raw_efforts = [float(x) for x in msg.effort]
+    #                 n_raw = len(raw_efforts)
 
-                    # 防御：如果实际维度和配置不一致，处理前 n 个
-                    n_ch = min(self.effort_filter_num_channels, n_raw)
+    #                 # 防御：如果实际维度和配置不一致，处理前 n 个
+    #                 n_ch = min(self.effort_filter_num_channels, n_raw)
 
-                    filtered_efforts = []
-                    for i_dim, val in enumerate(raw_efforts):
-                        if i_dim < n_ch and i_dim < len(self.effort_filters):
-                            filtered = float(self.effort_filters[i_dim].update(val))
-                            filtered_efforts.append(filtered)
-                        else:
-                            # 超出配置范围的维度，直接原样通过
-                            filtered_efforts.append(val)
+    #                 filtered_efforts = []
+    #                 for i_dim, val in enumerate(raw_efforts):
+    #                     if i_dim < n_ch and i_dim < len(self.effort_filters):
+    #                         filtered = float(self.effort_filters[i_dim].update(val))
+    #                         filtered_efforts.append(filtered)
+    #                     else:
+    #                         # 超出配置范围的维度，直接原样通过
+    #                         filtered_efforts.append(val)
 
-                    # 按你说的方案：
-                    # 使用 msg.effort 一个字段，打包成 [原始7维, 滤波后7维]
-                    # 假设 n_raw == 7，如果不是，前 n_ch 维对应滤波，其余部分原样复制两遍也可以按需改
-                    msg.effort = raw_efforts + filtered_efforts
-            except Exception as e:
-                # 任何滤波错误都不能影响对齐逻辑
-                self._warn("effort filter in joint_cb error: %s", e)
+    #                 # 按你说的方案：
+    #                 # 使用 msg.effort 一个字段，打包成 [原始7维, 滤波后7维]
+    #                 # 假设 n_raw == 7，如果不是，前 n_ch 维对应滤波，其余部分原样复制两遍也可以按需改
+    #                 msg.effort = raw_efforts + filtered_efforts
+    #         except Exception as e:
+    #             # 任何滤波错误都不能影响对齐逻辑
+    #             self._warn("effort filter in joint_cb error: %s", e)
 
-            # 无论是否启用滤波，消息都照常送给对齐器
-            self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
+    #         # 无论是否启用滤波，消息都照常送给对齐器
+    #         self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
 
-        return _cb
+    #     return _cb
 
     def _mk_oculus_init_joint_cb(self, k: int):
         def _cb(msg: OculusInitJointState):
@@ -645,31 +646,31 @@ class BaseManager(Node):
 
         return _cb
 
-    # def _mk_oculus_init_joint_cb(self, k: int):
-    #     last_log_t = time.perf_counter()
-    #     last_count = 0
-    #     count = 0
-    #     topic = self.joint_topics[k] if 0 <= k < len(self.joint_topics) else f"joint[{k}]"
+    def _mk_oculus_init_joint_cb(self, k: int):
+        last_log_t = time.perf_counter()
+        last_count = 0
+        count = 0
+        topic = self.joint_topics[k] if 0 <= k < len(self.joint_topics) else f"joint[{k}]"
 
-    #     def _cb(msg: OculusInitJointState):
-    #         nonlocal last_log_t, last_count, count
-    #         count += 1
-    #         if self.do_calculate_hz:
-    #             now = time.perf_counter()
-    #             log_period_s = max(0.2, float(self.stats_log_period_s))
-    #             if now - last_log_t >= log_period_s:
-    #                 dt = now - last_log_t
-    #                 delta = count - last_count
-    #                 hz = (delta / dt) if dt > 0 else 0.0
-    #                 self.get_logger().info(
-    #                     f"[oculus_init_joint_cb] idx={k} topic={topic} rate={hz:.2f}Hz"
-    #                 )
-    #                 last_log_t = now
-    #                 last_count = count
-    #         t_ns = self._ns_from_header_or_clock(msg.header)
-    #         self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
+        def _cb(msg: OculusInitJointState):
+            nonlocal last_log_t, last_count, count
+            count += 1
+            if self.do_calculate_hz:
+                now = time.perf_counter()
+                log_period_s = max(0.2, float(self.stats_log_period_s))
+                if now - last_log_t >= log_period_s:
+                    dt = now - last_log_t
+                    delta = count - last_count
+                    hz = (delta / dt) if dt > 0 else 0.0
+                    self.get_logger().info(
+                        f"[oculus_init_joint_cb] idx={k} topic={topic} rate={hz:.2f}Hz"
+                    )
+                    last_log_t = now
+                    last_count = count
+            t_ns = self._ns_from_header_or_clock(msg.header)
+            self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
 
-    #     return _cb
+        return _cb
 
     def _mk_tactile_cb(self, k: int):
         def _cb(msg: Float32MultiArray):
@@ -689,6 +690,7 @@ def main(args=None):
       python3 -m common_utils.base_manager
     """
     import rclpy
+    from rclpy.executors import MultiThreadedExecutor
     try:
         rclpy.init(args=args)
     except Exception:
@@ -700,6 +702,9 @@ def main(args=None):
         node = BaseManager()  # uses default node name 'manager'
         node.get_logger().info("BaseManager started. Ctrl-C to exit.")
         rclpy.spin(node)
+        # executor = MultiThreadedExecutor(num_threads=1)
+        # executor.add_node(node)
+        # executor.spin()
     except KeyboardInterrupt:
         if node is not None:
             node.get_logger().info("Keyboard interrupt, shutting down.")

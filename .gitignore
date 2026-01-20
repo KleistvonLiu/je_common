@@ -1,0 +1,12 @@
+.idea/
+
+build
+
+install
+
+*/__pycache__/
+*/*/__pycache__/
+
+log
+
+build_cmake_check/
