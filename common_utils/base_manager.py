@@ -302,9 +302,12 @@ class BaseManager(Node):
         # joint/tactile：多路 + 兼容单路
         self.declare_parameter('joint_state_topics', [])
         self.declare_parameter('joint_state_topics_csv', '/joint_states_double_arm')
+        self.declare_parameter('joint_cmd_topics', [])
+        self.declare_parameter('joint_cmd_topics_csv', '/joint_cmd_double_arm')
         self.declare_parameter('tactile_topics', [])
         self.declare_parameter('tactile_topics_csv', '')
         self.declare_parameter('joint_state_topic', '')  # legacy
+        self.declare_parameter('joint_cmd_topic', '')  # legacy
         self.declare_parameter('tactile_topic', '')  # legacy
 
         # 频率与容差（ms）
@@ -358,16 +361,29 @@ class BaseManager(Node):
         self.color_topics: List[str] = color_topics
         self.depth_topics: List[str] = depth_topics
 
-        joint_topics = list(p('joint_state_topics').value or [])
-        if not joint_topics:
+        joint_state_topics = list(p('joint_state_topics').value or [])
+        if not joint_state_topics:
             csv = p('joint_state_topics_csv').value or ''
             if csv.strip():
-                joint_topics = [s.strip() for s in csv.split(',') if s.strip()]
-        if not joint_topics:
+                joint_state_topics = [s.strip() for s in csv.split(',') if s.strip()]
+        if not joint_state_topics:
             legacy = p('joint_state_topic').value
             if legacy and str(legacy).strip():
-                joint_topics = [str(legacy).strip()]
-        self.joint_topics: List[str] = [t for t in joint_topics if t and t.strip()]
+                joint_state_topics = [str(legacy).strip()]
+        self.joint_state_topics: List[str] = list(
+            dict.fromkeys([t for t in joint_state_topics if t and t.strip()])
+        )
+
+        joint_cmd_topics = list(p('joint_cmd_topics').value or [])
+        if not joint_cmd_topics:
+            csv = p('joint_cmd_topics_csv').value or ''
+            if csv.strip():
+                joint_cmd_topics = [s.strip() for s in csv.split(',') if s.strip()]
+        if not joint_cmd_topics:
+            legacy = p('joint_cmd_topic').value
+            if legacy and str(legacy).strip():
+                joint_cmd_topics = [str(legacy).strip()]
+        self.joint_cmd_topics: List[str] = list(dict.fromkeys([t for t in joint_cmd_topics if t and t.strip()]))
 
         tactile_topics = list(p('tactile_topics').value or [])
         if not tactile_topics:
@@ -484,18 +500,23 @@ class BaseManager(Node):
         self.get_logger().info(f"Save dir: {self.save_dir}")
         self.get_logger().info(f"Color topics: {self.color_topics}")
         self.get_logger().info(f"Depth  topics: {self.depth_topics}")
-        self.get_logger().info(f"Joint topics:  {self.joint_topics}")
+        self.get_logger().info(f"Joint state topics: {self.joint_state_topics}")
+        self.get_logger().info(f"Joint cmd topics:   {self.joint_cmd_topics}")
         self.get_logger().info(f"Tactile topics:{self.tactile_topics}")
 
         # ---------- 对齐器 ----------
         C = len(self.color_topics)
         D = len(self.depth_topics) if self.save_depth else 0
-        J = len(self.joint_topics) if self.joint_topics else 0
+        J_state = len(self.joint_state_topics) if self.joint_state_topics else 0
+        J_cmd = len(self.joint_cmd_topics) if self.joint_cmd_topics else 0
+        J = J_state + J_cmd
         T = len(self.tactile_topics) if self.tactile_topics else 0
 
         self._idx_color = list(range(C))
         self._idx_depth = list(range(C, C + D))
-        self._idx_joint = list(range(C + D, C + D + J))
+        self._idx_joint_state = list(range(C + D, C + D + J_state))
+        self._idx_joint_cmd = list(range(C + D + J_state, C + D + J_state + J_cmd))
+        self._idx_joint = self._idx_joint_state + self._idx_joint_cmd
         self._idx_tact = list(range(C + D + J, C + D + J + T))
         num_streams = C + D + J + T
 
@@ -541,7 +562,7 @@ class BaseManager(Node):
         )
 
         self.get_logger().info(
-            f"rate={self.rate_hz}Hz, streams: C={C}, D={D}, J={J}, T={T}, total={num_streams}"
+            f"rate={self.rate_hz}Hz, streams: C={C}, D={D}, J_state={J_state}, J_cmd={J_cmd}, J_total={J}, T={T}, total={num_streams}"
         )
 
         # ---------- 订阅 ----------
@@ -556,14 +577,23 @@ class BaseManager(Node):
 
         cg_joint = ReentrantCallbackGroup()
         cg_tact = ReentrantCallbackGroup()
-        for k, topic in enumerate(self.joint_topics):
+        for k, topic in enumerate(self.joint_state_topics):
+            stream_idx = self._idx_joint_state[k]
             if "double_arm" in topic:
                 self.create_subscription(
-                    OculusInitJointState, topic, self._mk_oculus_init_joint_cb(k), reliable_qos,
+                    OculusInitJointState, topic, self._mk_oculus_init_joint_cb(stream_idx), reliable_qos,
                     callback_group=cg_joint
                 )
             else:
-                self.create_subscription(JointState, topic, self._mk_joint_cb(k), reliable_qos, callback_group=cg_joint)
+                self.create_subscription(
+                    JointState, topic, self._mk_joint_cb(stream_idx), reliable_qos, callback_group=cg_joint
+                )
+        for k, topic in enumerate(self.joint_cmd_topics):
+            stream_idx = self._idx_joint_cmd[k]
+            self.create_subscription(
+                OculusInitJointState, topic, self._mk_oculus_init_joint_cb(stream_idx), reliable_qos,
+                callback_group=cg_joint
+            )
         for k, topic in enumerate(self.tactile_topics):
             self.create_subscription(Float32MultiArray, topic, self._mk_tactile_cb(k), reliable_qos,
                                      callback_group=cg_tact)
@@ -595,12 +625,12 @@ class BaseManager(Node):
 
         return _cb
 
-    # def _mk_joint_cb(self, k: int):
-    #     def _cb(msg: JointState):
-    #         t_ns = self._ns_from_header_or_clock(msg.header)
-    #         self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
+    def _mk_joint_cb(self, stream_idx: int):
+        def _cb(msg: JointState):
+            t_ns = self._ns_from_header_or_clock(msg.header)
+            self.aligner.put_nowait(stream_idx, t_ns, msg)
 
-    #     return _cb
+        return _cb
 
     # def _mk_joint_cb(self, k: int):
     #     def _cb(msg: JointState):
@@ -639,10 +669,10 @@ class BaseManager(Node):
 
     #     return _cb
 
-    def _mk_oculus_init_joint_cb(self, k: int):
+    def _mk_oculus_init_joint_cb(self, stream_idx: int):
         def _cb(msg: OculusInitJointState):
             t_ns = self._ns_from_header_or_clock(msg.header)
-            self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
+            self.aligner.put_nowait(stream_idx, t_ns, msg)
 
         return _cb
 
@@ -650,7 +680,7 @@ class BaseManager(Node):
     #     last_log_t = time.perf_counter()
     #     last_count = 0
     #     count = 0
-    #     topic = self.joint_topics[k] if 0 <= k < len(self.joint_topics) else f"joint[{k}]"
+    #     topic = f"joint[{k}]"
 
     #     def _cb(msg: OculusInitJointState):
     #         nonlocal last_log_t, last_count, count
